@@ -9,27 +9,37 @@ func _() {
 	// Re-run the stringer command to generate them again.
 	var x [1]struct{}
 	_ = x[INVALID-0]
-	_ = x[INDENT-1]
-	_ = x[DEDENT-2]
-	_ = x[COLON-3]
-	_ = x[HYPHEN-4]
-	_ = x[STRING-5]
-	_ = x[FLOAT_NUMBER-6]
-	_ = x[INT_NUMBER-7]
-	_ = x[BOOLEAN-8]
-	_ = x[NULL-9]
-	_ = x[COMMENT-10]
-	_ = x[NEWLINE-11]
-	_ = x[EOF-12]
+	_ = x[SPACE-1]
+	_ = x[COLON-2]
+	_ = x[HYPHEN-3]
+	_ = x[STRING-6]
+	_ = x[FLOAT_NUMBER-7]
+	_ = x[INT_NUMBER-8]
+	_ = x[BOOLEAN-9]
+	_ = x[NULL-10]
+	_ = x[COMMENT-11]
+	_ = x[NEWLINE-12]
+	_ = x[EOF-13]
 }
 
-const _tokenType_name = "INVALIDINDENTDEDENTCOLONHYPHENSTRINGFLOAT_NUMBERINT_NUMBERBOOLEANNULLCOMMENTNEWLINEEOF"
+const (
+	_tokenType_name_0 = "INVALIDSPACECOLONHYPHEN"
+	_tokenType_name_1 = "STRINGFLOAT_NUMBERINT_NUMBERBOOLEANNULLCOMMENTNEWLINEEOF"
+)
 
-var _tokenType_index = [...]uint8{0, 7, 13, 19, 24, 30, 36, 48, 58, 65, 69, 76, 83, 86}
+var (
+	_tokenType_index_0 = [...]uint8{0, 7, 12, 17, 23}
+	_tokenType_index_1 = [...]uint8{0, 6, 18, 28, 35, 39, 46, 53, 56}
+)
 
 func (i tokenType) String() string {
-	if i < 0 || i >= tokenType(len(_tokenType_index)-1) {
+	switch {
+	case 0 <= i && i <= 3:
+		return _tokenType_name_0[_tokenType_index_0[i]:_tokenType_index_0[i+1]]
+	case 6 <= i && i <= 13:
+		i -= 6
+		return _tokenType_name_1[_tokenType_index_1[i]:_tokenType_index_1[i+1]]
+	default:
 		return "tokenType(" + strconv.FormatInt(int64(i), 10) + ")"
 	}
-	return _tokenType_name[_tokenType_index[i]:_tokenType_index[i+1]]
 }
