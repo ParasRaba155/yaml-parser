@@ -105,7 +105,7 @@ func (l *Lexer) NextToken() Token {
 			return l.readBoolean()
 		case 'n':
 			return l.readNull()
-		case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
+		case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '.':
 			return l.readNumber()
 		default:
 			if !unicode.IsSpace(rune(currentChar)) {
@@ -122,10 +122,10 @@ func (l *Lexer) readQuotedString() Token {
 	start := l.pos - 1 // we need to backtrack to get the first char
 	quoteChar := l.input[start-1]
 
-	// read till the end of string or till we encounter EOF
+	// read till the end of string or till we encounter EOF, or any potential comment
 	for {
 		ch := l.nextChar()
-		if ch == quoteChar || ch == 0 {
+		if ch == quoteChar || ch == 0 || l.isStartOfInlineComment() {
 			break
 		}
 	}
@@ -139,10 +139,10 @@ func (l *Lexer) readQuotedString() Token {
 func (l *Lexer) readUnquotedString() Token {
 	start := l.pos - 1
 
-	// read till the end of file or till the new line char
+	// read till the end of file or till the new line char, or we get comment
 	for {
 		ch := l.nextChar()
-		if ch == 0 || ch == '\n' {
+		if ch == 0 || ch == '\n' || l.isStartOfInlineComment() {
 			break
 		}
 	}
@@ -172,8 +172,8 @@ func (l *Lexer) readNumber() Token {
 			numType = FLOAT_NUMBER
 		}
 
-		// check for the end of the line or end of file or end of object
-		if ch == 0 || ch == '\n' {
+		// check for the end of the line or end of file or end of object, or we get any comment
+		if ch == 0 || ch == '\n' || l.isStartOfInlineComment() {
 			break
 		}
 		l.nextChar()
@@ -196,8 +196,8 @@ func (l *Lexer) readBoolean() Token {
 	// read till the end
 	for {
 		ch := l.peekChar()
-		// check for the end of the line or end of file or end of object
-		if ch == 0 || ch == '\n' {
+		// check for the end of the line or end of file or end of object, or we get comment
+		if ch == 0 || ch == '\n' || l.isStartOfInlineComment() {
 			break
 		}
 		l.nextChar()
@@ -216,8 +216,8 @@ func (l *Lexer) readNull() Token {
 	// read till the end
 	for {
 		ch := l.peekChar()
-		// check for the end of the line or end of file
-		if ch == 0 || ch == '\n' {
+		// check for the end of the line or end of file, or we get comment
+		if ch == 0 || ch == '\n' || l.isStartOfInlineComment() {
 			break
 		}
 		l.nextChar()
@@ -243,4 +243,20 @@ func (l *Lexer) readComment() Token {
 		l.nextChar()
 	}
 	return Token{Type: COMMENT, Pos: start}
+}
+
+// isStartOfInlineComment will check for the start of an inline comment
+// inline comments are comments at the end of the line instead of starting of a line
+// e.g.
+//
+//	key: value # inline comment
+//	# normal comment
+func (l *Lexer) isStartOfInlineComment() bool {
+	// inline comments will always have a space then '#' character
+	// then we can ignore the rest of the chars after the '#' character
+	currChar := l.input[l.pos-1]
+	if !unicode.IsSpace(rune(currChar)) {
+		return false
+	}
+	return l.peekChar() == '#'
 }
