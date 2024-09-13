@@ -22,6 +22,13 @@ func main() {
 		fmt.Printf("couldn't read the given file: %s\n", err)
 		os.Exit(1)
 	}
-	// WIP: Just pass the fileContent
-	fmt.Printf(">>>>>>>>>>\n%s>>>>>>>>>>\n", fileContent)
+
+	parser := NewParser(fileContent)
+	yaml, err := parser.Parse()
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+	fmt.Printf("%+v", yaml)
+	os.Exit(0)
 }

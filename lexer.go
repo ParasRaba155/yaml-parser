@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"strconv"
 	"unicode"
 )
@@ -12,7 +13,7 @@ var (
 	nullByte  = []byte("null")
 )
 
-// tokenType represents the different JSON tokens
+// tokenType represents the different YAML tokens
 //
 //go:generate stringer -type=tokenType
 type tokenType int
@@ -52,6 +53,10 @@ type Token struct {
 	Value string    // Value of the token
 	Type  tokenType // The type of the token
 	Pos   int       // Position of the token
+}
+
+func (t Token) String() string {
+	return fmt.Sprintf("Token{Value: %q, Type: %q, Pos: %d}", t.Value, t.Type.String(), t.Pos)
 }
 
 // Lexer will read the input and breaks it into tokens
@@ -107,11 +112,17 @@ func (l *Lexer) NextToken() Token {
 			return l.readNull()
 		case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '.':
 			return l.readNumber()
+		case '\n':
+			return Token{Type: NEWLINE, Pos: l.pos - 1}
+		case 0:
+			return Token{Type: EOF, Pos: l.pos - 1}
+		// by default just handle everything as unquoted string
+		// except for space chars
 		default:
-			if !unicode.IsSpace(rune(currentChar)) {
-				return Token{Type: INVALID, Pos: l.pos}
+			if unicode.IsSpace(rune(currentChar)) {
+				return Token{Type: SPACE, Pos: l.pos}
 			}
-			return Token{Type: SPACE, Pos: l.pos}
+			return l.readUnquotedString()
 		}
 	}
 }
@@ -142,16 +153,20 @@ func (l *Lexer) readUnquotedString() Token {
 	// read till the end of file or till the new line char, or we get comment
 	for {
 		ch := l.nextChar()
-		if ch == 0 || ch == '\n' || l.isStartOfInlineComment() {
+		if ch == 0 || l.isStartOfInlineComment() {
+			break
+		}
+		if l.isStartOfColon() || ch == '\n' {
+			l.pos--
 			break
 		}
 	}
 	// now remove all the trailing white spaces
 	end := l.pos - 1
-	for ; end >= 0; end-- {
-		if unicode.IsSpace(rune(l.input[end])) {
-			break
-		}
+	if !unicode.IsSpace(rune(l.input[end])) {
+		return Token{Type: STRING, Pos: start, Value: string(l.input[start : end+1])}
+	}
+	for ; end >= 0 && !unicode.IsSpace(rune(l.input[end])); end-- {
 	}
 	return Token{Type: STRING, Pos: start, Value: string(l.input[start : end+1])}
 }
@@ -185,7 +200,8 @@ func (l *Lexer) readNumber() Token {
 	// there is some error
 	_, err := strconv.ParseFloat(numStr, 64)
 	if err != nil {
-		return Token{Type: STRING, Pos: start, Value: numStr}
+		l.pos = start + 1
+		return l.readUnquotedString()
 	}
 	return Token{Type: numType, Value: numStr, Pos: start}
 }
@@ -205,7 +221,8 @@ func (l *Lexer) readBoolean() Token {
 	boolByte := l.input[start:l.pos]
 
 	if !bytes.Equal(boolByte, trueByte) && !bytes.Equal(boolByte, falseByte) {
-		return Token{Type: INVALID, Pos: start, Value: "Expected boolean"}
+		l.pos = start + 1
+		return l.readUnquotedString()
 	}
 	return Token{Type: BOOLEAN, Value: string(boolByte), Pos: start}
 }
@@ -217,14 +234,15 @@ func (l *Lexer) readNull() Token {
 	for {
 		ch := l.peekChar()
 		// check for the end of the line or end of file, or we get comment
-		if ch == 0 || ch == '\n' || l.isStartOfInlineComment() {
+		if ch == 0 || ch == '\n' || l.isStartOfInlineComment() || l.isStartOfColon() {
 			break
 		}
 		l.nextChar()
 	}
 	found := l.input[start:l.pos]
 	if !bytes.Equal(found, nullByte) {
-		return Token{Type: STRING, Pos: start, Value: string(found)}
+		l.pos = start + 1
+		return l.readUnquotedString()
 	}
 	return Token{Type: NULL, Value: string(found), Pos: start}
 }
@@ -259,4 +277,14 @@ func (l *Lexer) isStartOfInlineComment() bool {
 		return false
 	}
 	return l.peekChar() == '#'
+}
+
+func (l Lexer) isStartOfColon() bool {
+	// inline comments will always have a space then '#' character
+	// then we can ignore the rest of the chars after the '#' character
+	currChar := l.input[l.pos-1]
+	if currChar != ':' {
+		return false
+	}
+	return unicode.IsSpace(rune(l.peekChar()))
 }
