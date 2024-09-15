@@ -133,12 +133,12 @@ func (l *Lexer) NextToken() Token {
 // i.e. strings with ' and " quotes
 func (l *Lexer) readQuotedString() Token {
 	start := l.pos - 1 // we need to backtrack to get the first char
-	quoteChar := l.input[start-1]
+	quoteChar := l.input[start]
 
-	// read till the end of string or till we encounter EOF, or any potential comment
+	// read till the end of string or till we encounter EOF
 	for {
 		ch := l.nextChar()
-		if ch == quoteChar || ch == 0 || l.isStartOfInlineComment() {
+		if ch == quoteChar || ch == 0 {
 			break
 		}
 	}
