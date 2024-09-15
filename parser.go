@@ -98,9 +98,10 @@ var _ yamlVal = yamlArray{} // compile time check
 
 // Parser for yaml inputs in byte
 type Parser struct {
-	lexer     *Lexer
-	currToken Token
-	prevToken *Token
+	lexer              *Lexer
+	currToken          Token
+	prevToken          *Token
+	currentIndentation int
 }
 
 func (p Parser) String() string {
@@ -169,12 +170,15 @@ func (p *Parser) Parse() (YAMLObj, error) {
 		key := p.currToken.Value
 		p.NextToken()
 
-		if p.currToken.Type != COLON {
-			return obj, newParseError("Expected ':' after key declaration", p.getPos())
+		if err := p.expect(COLON, "expected ':' after key declaration"); err != nil {
+			return obj, err
 		}
 		p.NextToken()
 
-		if p.currToken.Type != SPACE {
+		// if err := p.expect(SPACE || NEWLINE, "Expected ' ' after seperator"); err != nil {
+		// 	return obj, err
+		// }
+		if p.currToken.Type != SPACE && p.currToken.Type != NEWLINE {
 			return obj, newParseError("Expected ' ' after seperator", p.getPos())
 		}
 		p.NextToken()
@@ -187,7 +191,7 @@ func (p *Parser) Parse() (YAMLObj, error) {
 		obj.append(KeyValue{Key: key, Value: val})
 
 		p.NextToken()
-		if p.currToken.Type != NEWLINE {
+		if p.currToken.Type != NEWLINE && p.currToken.Type != EOF {
 			return obj, newParseError("Expected new line after parsing values", p.getPos())
 		}
 		p.NextToken()
@@ -196,11 +200,19 @@ func (p *Parser) Parse() (YAMLObj, error) {
 	return obj, nil
 }
 
+// Helper function to check the current token type and return an error if it's not expected
+func (p Parser) expect(expectedType tokenType, errMsg string) error {
+	if p.currToken.Type != expectedType {
+		return newParseError(errMsg, p.getPos())
+	}
+	return nil
+}
+
 // parseValue from the current token
 func (p *Parser) parseValue() (yamlVal, error) {
 	switch p.currToken.Type {
 	case STRING:
-		value := yamlString(p.currToken.Value[1 : len(p.currToken.Value)-1])
+		value := yamlString(p.currToken.Value)
 		return value, nil
 	case INT_NUMBER:
 		num, err := strconv.Atoi(p.currToken.Value)
@@ -228,9 +240,67 @@ func (p *Parser) parseValue() (yamlVal, error) {
 			return nil, newParseError("Expected a null value", p.getPos())
 		}
 		return nil, nil
+	case SPACE:
+		return p.handleSpace()
 	case NEWLINE:
 		return nil, nil
 	default:
 		return nil, newParseError("Expected value", p.getPos())
 	}
+}
+
+// Handle SPACE token to track indentation
+func (p *Parser) handleSpace() (yamlVal, error) {
+	spaceCount := 0
+	for p.currToken.Type == SPACE {
+		spaceCount++
+		p.NextToken()
+	}
+
+	// Now we have the number of spaces. We can use this to determine indentation.
+	// Based on spaceCount, determine if we're handling a new block (nested list or map).
+
+	if spaceCount > p.currentIndentation {
+		// Increase in indentation, start parsing a nested structure (list or map)
+		return p.parseIndentedValue()
+	} else if spaceCount < p.currentIndentation {
+		// Decrease in indentation, we're ending a block. Adjust parser state accordingly.
+		p.currentIndentation = spaceCount
+		return nil, nil
+	}
+
+	// Same level indentation, continue parsing
+	return p.parseValue()
+}
+
+// Helper to parse indented values (nested structures like lists/maps)
+func (p *Parser) parseIndentedValue() (yamlVal, error) {
+	p.currentIndentation += 1 // Increase current indentation level
+
+	// Now check what kind of structure it is (list or map) based on the next token
+	switch p.currToken.Type {
+	case HYPHEN: // Could indicate a YAML list
+		return p.parseList()
+	case STRING, COLON: // Could indicate a map (key-value pairs)
+		return p.Parse()
+	default:
+		return nil, newParseError("expected list or map after indentation", p.getPos())
+	}
+}
+
+// Recursively parse a YAML list
+func (p *Parser) parseList() (yamlVal, error) {
+	var list []yamlVal
+	for p.currToken.Type == HYPHEN {
+		p.NextToken() // Skip the dash
+
+		item, err := p.parseValue()
+		if err != nil {
+			return nil, err
+		}
+		list = append(list, item)
+
+		p.NextToken()
+	}
+	return yamlArray(list), nil
 }

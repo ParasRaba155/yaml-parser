@@ -114,6 +114,8 @@ func (l *Lexer) NextToken() Token {
 			return l.readNumber()
 		case '\n':
 			return Token{Type: NEWLINE, Pos: l.pos - 1}
+		case '\t':
+			return Token{Type: INVALID, Pos: l.pos - 1, Value: "tabs are not valid within yaml files"}
 		case 0:
 			return Token{Type: EOF, Pos: l.pos - 1}
 		// by default just handle everything as unquoted string
