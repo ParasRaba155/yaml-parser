@@ -188,7 +188,10 @@ func (p *Parser) Parse() (YAMLObj, error) {
 		if err != nil {
 			return obj, err
 		}
-		obj.append(KeyValue{Key: key, Value: val})
+
+		if err := obj.append(KeyValue{Key: key, Value: val}); err != nil {
+			return obj, newParseError(err.Error(), p.getPos())
+		}
 
 		p.NextToken()
 		if p.currToken.Type != NEWLINE && p.currToken.Type != EOF {
