@@ -135,9 +135,11 @@ func NewParser(input []byte) *Parser {
 func (p *Parser) NextToken() {
 	if p.prevToken != nil {
 		p.currToken = *p.prevToken
+		p.prevToken = nil // set the token to nil
 		return
 	}
 	p.currToken = p.lexer.NextToken()
+	fmt.Printf("%s\n", p)
 }
 
 func (p *Parser) peekToken() Token {
@@ -157,12 +159,7 @@ func (p *Parser) Parse() (YAMLObj, error) {
 		return obj, newParseError("empty files are not valid yaml", p.getPos())
 	}
 
-	fmt.Println("before loop")
-	fmt.Printf("%s\n", p)
-	fmt.Println("in loop")
-
 	for p.currToken.Type != EOF {
-		fmt.Printf("%s\n", p)
 		if p.currToken.Type != STRING {
 			return obj, newParseError("Expected string for key", p.getPos())
 		}
@@ -182,7 +179,6 @@ func (p *Parser) Parse() (YAMLObj, error) {
 			return obj, newParseError("Expected ' ' after seperator", p.getPos())
 		}
 		p.NextToken()
-		fmt.Printf("value: %s\n", p)
 
 		val, err := p.parseValue()
 		if err != nil {
@@ -246,7 +242,7 @@ func (p *Parser) parseValue() (yamlVal, error) {
 	case SPACE:
 		return p.handleSpace()
 	case NEWLINE:
-		return nil, nil
+		return p.handleNewLine()
 	default:
 		return nil, newParseError("Expected value", p.getPos())
 	}
@@ -306,4 +302,14 @@ func (p *Parser) parseList() (yamlVal, error) {
 		p.NextToken()
 	}
 	return yamlArray(list), nil
+}
+
+// handleNewLine to track potential map, array or null value
+func (p *Parser) handleNewLine() (yamlVal, error) {
+	p.NextToken()
+	// next token is key and thus current value is NULL
+	if p.currToken.Type == STRING {
+		return nil, nil
+	}
+	return p.handleSpace()
 }
