@@ -7,7 +7,8 @@ import (
 )
 
 var (
-	ErrDuplicateKey = errors.New("duplicate key")
+	ErrDuplicateKey  = errors.New("duplicate key")
+	errEmptyYamlFile = parseError{Message: "empty files are not valid yaml"}
 )
 
 // Parser for yaml inputs in byte
@@ -47,9 +48,12 @@ func NewParser(input []byte) *Parser {
 // NextToken the helper function to get the next token from the lexer
 // and it sets the currToken to the next token
 func (p *Parser) NextToken() {
+	// this is the case where we have peeked the next token
+	// so swap the peeked token to current token, and set the
+	// peeked token to empty
 	if p.prevToken != nil {
 		p.currToken = *p.prevToken
-		p.prevToken = nil // set the token to nil
+		p.prevToken = nil
 		return
 	}
 	p.currToken = p.lexer.NextToken()
@@ -58,6 +62,8 @@ func (p *Parser) NextToken() {
 
 func (p *Parser) peekToken() Token {
 	p.prevToken = &p.currToken
+	fmt.Println("p.peekToken()")
+	fmt.Printf("%s\n", p)
 	return p.lexer.NextToken()
 }
 
@@ -70,7 +76,7 @@ func (p *Parser) Parse() (YAMLObj, error) {
 	obj := YAMLObj{keys: make(map[string]struct{})}
 
 	if p.currToken.Type == EOF {
-		return obj, newParseError("empty files are not valid yaml", p.getPos())
+		return obj, errEmptyYamlFile
 	}
 
 	for p.currToken.Type != EOF {
@@ -105,7 +111,8 @@ func (p *Parser) Parse() (YAMLObj, error) {
 
 		p.NextToken()
 		if p.currToken.Type != NEWLINE && p.currToken.Type != EOF {
-			return obj, newParseError("Expected new line after parsing values", p.getPos())
+			msg := fmt.Sprintf("Expected new line after parsing values, got: %s", p.currToken.Type.String())
+			return obj, newParseError(msg, p.getPos())
 		}
 		p.NextToken()
 	}
@@ -164,11 +171,7 @@ func (p *Parser) parseValue() (yamlVal, error) {
 
 // Handle SPACE token to track indentation
 func (p *Parser) handleSpace() (yamlVal, error) {
-	spaceCount := 0
-	for p.currToken.Type == SPACE {
-		spaceCount++
-		p.NextToken()
-	}
+	spaceCount := p.getIndentationLevel()
 
 	// Now we have the number of spaces. We can use this to determine indentation.
 	// Based on spaceCount, determine if we're handling a new block (nested list or map).
@@ -186,6 +189,15 @@ func (p *Parser) handleSpace() (yamlVal, error) {
 	return p.parseValue()
 }
 
+func (p *Parser) getIndentationLevel() int {
+	spaceCount := 0
+	for p.currToken.Type == SPACE {
+		spaceCount++
+		p.NextToken()
+	}
+	return spaceCount
+}
+
 // Helper to parse indented values (nested structures like lists/maps)
 func (p *Parser) parseIndentedValue() (yamlVal, error) {
 	p.currentIndentation += 1 // Increase current indentation level
@@ -197,7 +209,7 @@ func (p *Parser) parseIndentedValue() (yamlVal, error) {
 	case STRING, COLON: // Could indicate a map (key-value pairs)
 		return p.Parse()
 	default:
-		return nil, newParseError("expected list or map after indentation", p.getPos())
+		return nil, newParseError(fmt.Sprintf("expected list or map after indentation, got: %s", p.currToken.Type.String()), p.getPos())
 	}
 }
 
@@ -213,6 +225,21 @@ func (p *Parser) parseList() (yamlVal, error) {
 		}
 		list = append(list, item)
 
+		// get to the next line
+		for p.currToken.Type != NEWLINE {
+			if p.currToken.Type == EOF {
+				break
+			}
+			p.NextToken()
+		}
+
+		if p.currentIndentation > p.getIndentationLevel() {
+			break
+		}
+
+		if p.currToken.Type == SPACE && p.peekToken().Type != HYPHEN {
+			return nil, newParseError("list must have '-' character", p.getPos())
+		}
 		p.NextToken()
 	}
 	return yamlArray(list), nil
